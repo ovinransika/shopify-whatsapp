@@ -1,129 +1,20 @@
-// import { createClient } from "@supabase/supabase-js";
-// import { createDiscountCode } from "../lib/shopify.js";
-
-// const supabase = createClient(
-//     process.env.SUPABASE_URL,
-//     process.env.SUPABASE_KEY
-// );
-
-// // Send WhatsApp Template
-// async function sendWhatsApp(phone, template, parameters) {
-//     const cleanPhone = phone.replace("+", "");
-
-//     const response = await fetch(
-//         `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
-//         {
-//             method: "POST",
-//             headers: {
-//                 Authorization: `Bearer ${process.env.WA_TOKEN}`,
-//                 "Content-Type": "application/json",
-//             },
-//             body: JSON.stringify({
-//                 messaging_product: "whatsapp",
-//                 to: cleanPhone,
-//                 type: "template",
-//                 template: {
-//                     name: template,
-//                     language: { code: "en" },
-//                     components: [
-//                         {
-//                             type: "body",
-//                             parameters: parameters,
-//                         },
-//                     ],
-//                 },
-//             }),
-//         }
-//     );
-
-//     const data = await response.json();
-//     console.log("WhatsApp response:", data);
-// }
-
-// // MAIN CRON HANDLER
-// export default async function handler(req, res) {
-//     try {
-//         const now = new Date();
-
-//         const { data: carts, error } = await supabase
-//             .from("abandoned_checkouts")
-//             .select("*")
-//             .eq("completed", false);
-
-//         if (error) {
-//             console.log("Supabase error:", error);
-//             return res.status(200).end();
-//         }
-
-//         for (const cart of carts) {
-//             const hoursSince =
-//                 (now - new Date(cart.created_at)) / 1000 / 60 / 60;
-
-//             // 🟡 REMINDER #1 (after 2 hours)
-//             if (hoursSince > 2 && !cart.reminded_1) {
-//                 console.log("Sending Reminder 1 to", cart.phone);
-
-//                 await sendWhatsApp(cart.phone, "abandoned_cart_1", [
-//                     {
-//                         type: "text",
-//                         text: cart.recovery_url,
-//                     },
-//                 ]);
-
-//                 await supabase
-//                     .from("abandoned_checkouts")
-//                     .update({ reminded_1: true })
-//                     .eq("id", cart.id);
-//             }
-
-//             // 🟡 REMINDER #2 (after 24 hours + coupon)
-//             if (hoursSince > 24 && !cart.reminded_2) {
-//                 console.log("Sending Reminder 2 to", cart.phone);
-
-//                 // generate unique coupon
-//                 const coupon = await createDiscountCode();
-
-//                 await sendWhatsApp(cart.phone, "abandoned_cart_2", [
-//                     {
-//                         type: "text",
-//                         text: coupon,
-//                     },
-//                     {
-//                         type: "text",
-//                         text: cart.recovery_url,
-//                     },
-//                 ]);
-
-//                 await supabase
-//                     .from("abandoned_checkouts")
-//                     .update({ reminded_2: true })
-//                     .eq("id", cart.id);
-//             }
-//         }
-
-//         res.status(200).send("Checked abandoned carts");
-//     } catch (err) {
-//         console.log("Cron error:", err);
-//         res.status(200).end();
-//     }
-// }
-
-
 import { createClient } from "@supabase/supabase-js";
 import { createDiscountCode } from "../lib/shopify.js";
 
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// Send WhatsApp Template
-async function sendWhatsApp(phone, template, parameters) {
+// ✅ Change these to your actual Meta template names
+const ABANDONED_TEMPLATE_1 = "abandoned_cart_1";
+const ABANDONED_TEMPLATE_2 = "abandoned_cart_2";
+
+// TEST timings (minutes)
+const MINUTES_TO_SEND_1 = 2;
+const MINUTES_TO_SEND_2 = 5;
+
+async function sendWhatsAppTemplate(phone, templateName, bodyParameters) {
     const cleanPhone = phone.replace("+", "");
 
-    console.log("Sending template:", template, "to", cleanPhone);
-
-    const response = await fetch(
+    const resp = await fetch(
         `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
         {
             method: "POST",
@@ -136,12 +27,12 @@ async function sendWhatsApp(phone, template, parameters) {
                 to: cleanPhone,
                 type: "template",
                 template: {
-                    name: template,
-                    language: { code: "en" },
+                    name: templateName,
+                    language: { code: "en" }, // use en_US if your template language is en_US
                     components: [
                         {
                             type: "body",
-                            parameters: parameters,
+                            parameters: bodyParameters,
                         },
                     ],
                 },
@@ -149,18 +40,20 @@ async function sendWhatsApp(phone, template, parameters) {
         }
     );
 
-    const data = await response.json();
-    console.log("WhatsApp response:", data);
+    const data = await resp.json();
+    console.log("WhatsApp raw response:", JSON.stringify(data));
+    return data;
 }
 
 export default async function handler(req, res) {
-    // ✅ allow Vercel Cron only
+    // ✅ Protect endpoint (cron-job.org must send this header)
     const auth = req.headers.authorization || "";
     if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-        return res.status(401).send("Unauthorized");
+        return res.status(401).json({ error: "Unauthorized" });
     }
+
     try {
-        const now = new Date();
+        console.log("TEST CRON EXECUTED:", new Date().toISOString());
 
         const { data: carts, error } = await supabase
             .from("abandoned_checkouts")
@@ -168,25 +61,37 @@ export default async function handler(req, res) {
             .eq("completed", false);
 
         if (error) {
-            console.log("Supabase error:", error);
-            return res.status(200).end();
+            console.log("Supabase fetch error:", error);
+            return res.status(200).send("OK");
         }
 
+        const now = Date.now();
+
         for (const cart of carts) {
-            const minutesSince =
-                (now - new Date(cart.created_at)) / 1000 / 60;
+            const createdAt = new Date(cart.created_at).getTime();
+            const minutesSince = (now - createdAt) / 1000 / 60;
 
-            console.log("Cart:", cart.phone, "Minutes:", minutesSince);
+            console.log(
+                "Cart:",
+                cart.id,
+                "Phone:",
+                cart.phone,
+                "Minutes:",
+                minutesSince.toFixed(2),
+                "r1:",
+                cart.reminded_1,
+                "r2:",
+                cart.reminded_2,
+                "completed:",
+                cart.completed
+            );
 
-            // 🟡 REMINDER #1 (~3 minutes)
-            if (minutesSince > 3 && !cart.reminded_1) {
-                console.log("TEST MODE → Reminder 1");
+            // ✅ Reminder #1 after 2 mins
+            if (!cart.reminded_1 && minutesSince >= MINUTES_TO_SEND_1) {
+                console.log("TEST → Sending Reminder 1:", cart.phone);
 
-                await sendWhatsApp(cart.phone, "abandoned_cart_1", [
-                    {
-                        type: "text",
-                        text: cart.recovery_url,
-                    },
+                await sendWhatsAppTemplate(cart.phone, ABANDONED_TEMPLATE_1, [
+                    { type: "text", text: cart.recovery_url },
                 ]);
 
                 await supabase
@@ -195,14 +100,14 @@ export default async function handler(req, res) {
                     .eq("id", cart.id);
             }
 
-            // 🟡 REMINDER #2 (~6 minutes + coupon)
-            if (minutesSince > 6 && !cart.reminded_2) {
-                console.log("TEST MODE → Reminder 2");
+            // ✅ Reminder #2 after 5 mins (only if still not completed)
+            if (!cart.reminded_2 && minutesSince >= MINUTES_TO_SEND_2) {
+                console.log("TEST → Sending Reminder 2 + coupon:", cart.phone);
 
-                const coupon = await createDiscountCode();
-                console.log("Generated coupon:", coupon);
+                const coupon = await createDiscountCode(); // must return string like "FKxxxx"
+                console.log("TEST → Coupon generated:", coupon);
 
-                await sendWhatsApp(cart.phone, "abandoned_cart_2", [
+                await sendWhatsAppTemplate(cart.phone, ABANDONED_TEMPLATE_2, [
                     { type: "text", text: coupon },
                     { type: "text", text: cart.recovery_url },
                 ]);
@@ -214,9 +119,9 @@ export default async function handler(req, res) {
             }
         }
 
-        res.status(200).send("Test check complete");
+        return res.status(200).send("Test check complete");
     } catch (err) {
         console.log("Cron error:", err);
-        res.status(200).end();
+        return res.status(200).send("OK");
     }
 }

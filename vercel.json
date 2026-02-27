@@ -1,8 +1,0 @@
-{
-    "crons": [
-        {
-            "path": "/api/check-abandoned",
-            "schedule": "*/1 * * * *"
-        }
-    ]
-}
