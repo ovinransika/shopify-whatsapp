@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { createDiscountCode } from "../lib/shopify.js";
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 const TEMPLATE_1 = "abandoned_cart_1";
 const TEMPLATE_2 = "abandoned_cart_2";
@@ -9,7 +12,7 @@ const TEMPLATE_2 = "abandoned_cart_2";
 const MINUTES_TO_SEND_1 = 2;
 const MINUTES_TO_SEND_2 = 5;
 
-async function sendTemplate(phone, template, bodyParams, buttonCode = null) {
+async function sendTemplate(phone, template, bodyParams, couponCode = null) {
     const clean = phone.replace("+", "");
 
     const components = [
@@ -19,12 +22,17 @@ async function sendTemplate(phone, template, bodyParams, buttonCode = null) {
         },
     ];
 
-    if (buttonCode) {
+    if (couponCode) {
         components.push({
             type: "button",
             sub_type: "copy_code",
             index: "0",
-            parameters: [{ type: "text", text: buttonCode }],
+            parameters: [
+                {
+                    type: "coupon_code",
+                    coupon_code: couponCode,
+                },
+            ],
         });
     }
 
@@ -55,7 +63,7 @@ async function sendTemplate(phone, template, bodyParams, buttonCode = null) {
 
 export default async function handler(req, res) {
     if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-        return res.status(401).send("Unauthorized");
+        return res.status(401).end("Unauthorized");
     }
 
     console.log("TEST CRON EXECUTED:", new Date().toISOString());
@@ -70,11 +78,11 @@ export default async function handler(req, res) {
     for (const cart of carts) {
         if (!cart.phone) continue;
 
-        const minutes = (now - new Date(cart.created_at)) / 1000 / 60;
+        const minutes = (now - new Date(cart.created_at)) / 60000;
 
         console.log("Cart:", cart.id, "Minutes:", minutes.toFixed(2));
 
-        // Reminder 1
+        // ✅ Reminder 1
         if (!cart.reminded_1 && minutes >= MINUTES_TO_SEND_1) {
             console.log("Sending Reminder 1");
 
@@ -88,7 +96,7 @@ export default async function handler(req, res) {
                 .eq("id", cart.id);
         }
 
-        // Reminder 2
+        // ✅ Reminder 2
         if (!cart.reminded_2 && minutes >= MINUTES_TO_SEND_2) {
             console.log("Sending Reminder 2");
 
@@ -107,10 +115,13 @@ export default async function handler(req, res) {
 
             await supabase
                 .from("abandoned_checkouts")
-                .update({ reminded_2: true })
+                .update({
+                    reminded_2: true,
+                    discount_code: coupon,
+                })
                 .eq("id", cart.id);
         }
     }
 
-    res.status(200).send("Test run complete");
+    res.status(200).send("TEST COMPLETE");
 }
