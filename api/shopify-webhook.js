@@ -34,13 +34,16 @@ export default async function handler(req, res) {
                 to: cleanPhone,
                 type: "template",
                 template: {
-                    name: "order_confirmed",
+                    name: "order_confirmation_fk_india_v6",
                     language: { code: "en" },
                     components: [
                         {
                             type: "body",
                             parameters: [
-                                { type: "text", text: orderNumber },
+                                {
+                                    type: "text",
+                                    text: orderNumber,
+                                },
                             ],
                         },
                     ],
