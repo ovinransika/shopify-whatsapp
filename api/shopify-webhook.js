@@ -35,7 +35,7 @@ export default async function handler(req, res) {
                 type: "template",
                 template: {
                     name: "order_confirmation_fk_india_v6",
-                    language: { code: "en_us" },
+                    language: { policy: "deterministic", code: "en_US" },
                     components: [
                         {
                             type: "body",
