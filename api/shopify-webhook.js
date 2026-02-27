@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     const cleanPhone = phone.replace("+", "");
 
     // SEND WHATSAPP TEMPLATE
-    await fetch(
+    const response = await fetch(
         `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
         {
             method: "POST",
@@ -35,15 +35,12 @@ export default async function handler(req, res) {
                 type: "template",
                 template: {
                     name: "order_confirmation_fk_india_v6",
-                    language: { code: "en" },
+                    language: { code: "en_us" },
                     components: [
                         {
                             type: "body",
                             parameters: [
-                                {
-                                    type: "text",
-                                    text: orderNumber,
-                                },
+                                { type: "text", text: orderNumber },
                             ],
                         },
                     ],
@@ -51,6 +48,9 @@ export default async function handler(req, res) {
             }),
         }
     );
+
+    const data = await response.json();
+    console.log("WhatsApp response:", data);
 
     return res.status(200).send("Message sent");
 }
