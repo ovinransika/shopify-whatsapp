@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
     const payload = req.body;
 
-    const orderNumber = payload.name;
+    const orderNumber = payload.name || payload.order_number;
     const phone =
         payload.phone || payload.customer?.phone;
 
@@ -21,6 +21,7 @@ export default async function handler(req, res) {
     const cleanPhone = phone.replace("+", "");
 
     // SEND WHATSAPP TEMPLATE
+
     const response = await fetch(
         `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
         {
@@ -34,18 +35,18 @@ export default async function handler(req, res) {
                 to: cleanPhone,
                 type: "template",
                 template: {
-                    name: "order_confirmation_fk_india_v6",
+                    name: "simple_test",
                     language: { code: "en" },
                     components: [
                         {
                             type: "body",
                             parameters: [
-                                { type: "text", text: orderNumber },
-                            ],
-                        },
-                    ],
-                },
-            }),
+                                { type: "text", text: orderNumber }
+                            ]
+                        }
+                    ]
+                }
+            })
         }
     );
 
