@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY // ✅ service role key
+    process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 export default async function handler(req, res) {
@@ -11,31 +11,31 @@ export default async function handler(req, res) {
     try {
         const p = req.body;
 
+        const checkoutId = p?.id ? String(p.id) : null;
+
+        const recoveryUrl =
+            p?.abandoned_checkout_url || p?.recovery_url || p?.checkout_url || null;
+
         const phone =
             p?.phone ||
             p?.customer?.phone ||
             p?.shipping_address?.phone ||
-            p?.billing_address?.phone;
+            p?.billing_address?.phone ||
+            null;
 
-        const recoveryUrl =
-            p?.abandoned_checkout_url ||
-            p?.recovery_url ||
-            p?.checkout_url;
-
-        console.log("✅ checkout webhook hit");
+        console.log("✅ checkout-create hit");
+        console.log("checkout id:", checkoutId);
         console.log("phone:", phone);
         console.log("recoveryUrl:", recoveryUrl);
-        console.log("checkout id:", p?.id);
 
-        if (!phone || !recoveryUrl || !p?.id) {
-            console.log("❌ missing required fields");
+        if (!checkoutId || !recoveryUrl) {
+            console.log("❌ missing checkoutId or recoveryUrl");
             return res.status(200).send("Missing fields");
         }
 
-        // Upsert by checkout_id to avoid duplicates
         const insertPayload = {
-            checkout_id: String(p.id),
-            phone: String(phone),
+            checkout_id: checkoutId,
+            phone: phone ? String(phone) : null,
             recovery_url: String(recoveryUrl),
             created_at: new Date().toISOString(),
             reminded_1: false,
@@ -43,22 +43,21 @@ export default async function handler(req, res) {
             completed: false,
         };
 
-        const { data: inserted, error: insertError } = await supabase
+        const { data, error } = await supabase
             .from("abandoned_checkouts")
             .upsert(insertPayload, { onConflict: "checkout_id" })
             .select()
             .single();
 
-        if (insertError) {
-            console.log("❌ Supabase insert error:", insertError);
-            return res.status(200).send("Supabase insert failed");
+        if (error) {
+            console.log("❌ Supabase upsert error:", error);
+            return res.status(200).send("Supabase failed");
         }
 
-        console.log("✅ Supabase insert OK:", inserted?.id);
-
+        console.log("✅ Saved row:", data?.id, "phone:", data?.phone);
         return res.status(200).send("Saved");
     } catch (e) {
-        console.log("❌ handler error:", e);
-        return res.status(200).send("Error");
+        console.log("❌ checkout-create error:", e);
+        return res.status(200).send("OK");
     }
 }
