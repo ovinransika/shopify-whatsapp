@@ -42,7 +42,7 @@ async function sendTemplate(phone, template, bodyParams, buttonCode = null) {
                 type: "template",
                 template: {
                     name: template,
-                    language: { code: "en_US" },
+                    language: { code: "en" },
                     components,
                 },
             }),
