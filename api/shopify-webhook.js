@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
     // SEND WHATSAPP TEMPLATE
     const response = await fetch(
-        `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+        `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`,
         {
             method: "POST",
             headers: {
@@ -49,8 +49,8 @@ export default async function handler(req, res) {
         }
     );
 
-    const data = await response.json();
-    console.log("WhatsApp response:", data);
+    const text = await response.text();
+    console.log("WhatsApp raw response:", text);
 
     return res.status(200).send("Message sent");
 }
